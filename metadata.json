@@ -1,0 +1,6 @@
+{
+  "name": "SwiftCV — Professional CVs in Minutes",
+  "description": "Build an ATS-optimised CV and tailored cover letter for the Kenyan job market in minutes.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
