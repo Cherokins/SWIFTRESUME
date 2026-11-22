@@ -1,6 +1,8 @@
-import type {
-  GeneratedCoverLetterData,
-  GeneratedCvData,
+import {
+  CV_THEMES,
+  type CvTheme,
+  type GeneratedCoverLetterData,
+  type GeneratedCvData,
 } from '../types/cv';
 
 function escapeHtml(value: string): string {
@@ -12,7 +14,12 @@ function escapeHtml(value: string): string {
     .replaceAll("'", '&#39;');
 }
 
-export function buildCvPrintHtml(cv: GeneratedCvData): string {
+export function buildCvPrintHtml(
+  cv: GeneratedCvData,
+  theme: CvTheme = 'navy'
+): string {
+  const palette = CV_THEMES[theme] || CV_THEMES.navy;
+
   const contactHtml = cv.contactItems
     .filter(Boolean)
     .map((item) => `<span>${escapeHtml(item)}</span>`)
@@ -99,11 +106,11 @@ export function buildCvPrintHtml(cv: GeneratedCvData): string {
     .cv-h-contact {
       display: flex; flex-wrap: wrap; gap: 12px;
       font-size: 11px; color: #72757f;
-      padding-bottom: 11px; border-bottom: 2px solid #14397a; margin-bottom: 14px;
+      padding-bottom: 11px; border-bottom: 2px solid ${palette.accent}; margin-bottom: 14px;
     }
     .cv-section-h {
       font-size: 9px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase;
-      color: #14397a; margin: 14px 0 6px; padding-bottom: 3px; border-bottom: 1px solid #e3e3e8;
+      color: ${palette.accent}; margin: 14px 0 6px; padding-bottom: 3px; border-bottom: 1px solid #e3e3e8;
     }
     .cv-summary { font-size: 12px; color: #3a3d47; line-height: 1.7; }
     .cv-exp { margin-bottom: 11px; }
@@ -115,7 +122,7 @@ export function buildCvPrintHtml(cv: GeneratedCvData): string {
     .cv-exp-list li { font-size: 11px; color: #3a3d47; line-height: 1.65; margin-bottom: 2px; }
     .cv-skills-wrap { display: flex; flex-wrap: wrap; gap: 5px; }
     .cv-skill {
-      background: #e8edf7; color: #14397a;
+      background: ${palette.badgeBg}; color: ${palette.badgeText};
       font-size: 10px; font-weight: 600; padding: 2px 7px; border-radius: 3px;
     }
     .cv-edu { margin-bottom: 8px; }
@@ -127,7 +134,7 @@ export function buildCvPrintHtml(cv: GeneratedCvData): string {
       counter-increment: ach; display: flex; gap: 7px;
       font-size: 11px; color: #3a3d47; line-height: 1.65; margin-bottom: 3px;
     }
-    .cv-ach-list li::before { content: counter(ach) '.'; color: #14397a; font-weight: 700; flex-shrink: 0; }
+    .cv-ach-list li::before { content: counter(ach) '.'; color: ${palette.accent}; font-weight: 700; flex-shrink: 0; }
     .cv-langs { font-size: 11px; color: #3a3d47; line-height: 1.7; }
     @media print { body { padding: 20px 24px; } }
   </style>
@@ -193,6 +200,24 @@ export function buildCoverLetterPrintHtml(
   <div class="cl-name">${escapeHtml(cl.signatureName)}</div>
 </body>
 </html>`;
+}
+
+export function formatCoverLetterPlainText(
+  cl: GeneratedCoverLetterData
+): string {
+  return [
+    cl.date,
+    '',
+    ...cl.recipientLines,
+    '',
+    cl.subject,
+    '',
+    cl.salutation,
+    '',
+    ...cl.paragraphs.flatMap((p) => [p, '']),
+    cl.closing,
+    cl.signatureName,
+  ].join('\n');
 }
 
 export function printHtmlDocument(html: string): void {

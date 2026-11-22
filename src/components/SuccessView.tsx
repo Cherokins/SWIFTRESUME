@@ -1,14 +1,16 @@
 import React from 'react';
-import { Check } from 'lucide-react';
+import { Check, Copy, Download } from 'lucide-react';
 
 interface SuccessViewProps {
   onDownload: (type: 'cv' | 'cl') => void;
+  onCopyCoverLetter: () => void;
   onViewDocuments: () => void;
   onBuildAnother: () => void;
 }
 
 export const SuccessView: React.FC<SuccessViewProps> = ({
   onDownload,
+  onCopyCoverLetter,
   onViewDocuments,
   onBuildAnother,
 }) => {
@@ -22,23 +24,33 @@ export const SuccessView: React.FC<SuccessViewProps> = ({
       </h1>
       <p className="max-w-sm text-sm text-[#72757f] mb-7">
         Your CV and cover letter are unlocked. Download them below as
-        print-ready PDFs and start applying.
+        print-ready PDFs or copy your cover letter text for email applications.
       </p>
 
       <div className="flex flex-wrap items-center justify-center gap-3">
         <button
           type="button"
           onClick={() => onDownload('cv')}
-          className="rounded-lg bg-[#14397a] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#1d52b0] cursor-pointer"
+          className="inline-flex items-center gap-2 rounded-lg bg-[#14397a] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#1d52b0] cursor-pointer"
         >
+          <Download className="h-4 w-4" aria-hidden="true" />
           Download CV (PDF)
         </button>
         <button
           type="button"
           onClick={() => onDownload('cl')}
-          className="rounded-lg bg-[#14397a] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#1d52b0] cursor-pointer"
+          className="inline-flex items-center gap-2 rounded-lg bg-[#14397a] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#1d52b0] cursor-pointer"
         >
+          <Download className="h-4 w-4" aria-hidden="true" />
           Download Cover Letter (PDF)
+        </button>
+        <button
+          type="button"
+          onClick={onCopyCoverLetter}
+          className="inline-flex items-center gap-2 rounded-lg border border-[#cccdd4] bg-white px-4 py-2.5 text-sm font-medium text-[#3a3d47] hover:border-[#72757f] cursor-pointer"
+        >
+          <Copy className="h-4 w-4" aria-hidden="true" />
+          Copy Cover Letter Text
         </button>
         <button
           type="button"

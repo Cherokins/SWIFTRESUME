@@ -5,8 +5,7 @@ import { fileURLToPath } from 'url';
 import { GoogleGenAI, ThinkingLevel, Type } from '@google/genai';
 import type {
   CvFormData,
-  GeneratedCoverLetterData,
-  GeneratedCvData,
+  GeneratedDocumentsResponse,
 } from './src/types/cv.ts';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -26,6 +25,7 @@ function getAiClient(): GoogleGenAI {
   return new GoogleGenAI({
     apiKey,
     httpOptions: {
+      timeout: 20000,
       headers: {
         'User-Agent': 'aistudio-build',
       },
@@ -41,10 +41,129 @@ function formatTodayForKenya(): string {
   }).format(new Date());
 }
 
-async function generateCvContent(
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isTransientModelError(err: unknown): boolean {
+  const raw = err instanceof Error ? err.message : String(err);
+  const name = err instanceof Error ? err.name : '';
+  return (
+    name === 'AbortError' ||
+    name === 'TimeoutError' ||
+    raw.includes('503') ||
+    raw.includes('UNAVAILABLE') ||
+    raw.includes('high demand') ||
+    raw.includes('429') ||
+    raw.includes('RESOURCE_EXHAUSTED') ||
+    raw.includes('500') ||
+    raw.includes('INTERNAL') ||
+    raw.includes('ECONNRESET') ||
+    raw.includes('ETIMEDOUT') ||
+    raw.toLowerCase().includes('timeout')
+  );
+}
+
+const DOCUMENTS_RESPONSE_SCHEMA = {
+  type: Type.OBJECT,
+  properties: {
+    cv: {
+      type: Type.OBJECT,
+      properties: {
+        fullName: { type: Type.STRING },
+        targetRole: { type: Type.STRING },
+        contactItems: {
+          type: Type.ARRAY,
+          items: { type: Type.STRING },
+        },
+        professionalSummary: { type: Type.STRING },
+        experience: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              role: { type: Type.STRING },
+              company: { type: Type.STRING },
+              dateRange: { type: Type.STRING },
+              bullets: {
+                type: Type.ARRAY,
+                items: { type: Type.STRING },
+              },
+            },
+            required: ['role', 'company', 'dateRange', 'bullets'],
+          },
+        },
+        education: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              degree: { type: Type.STRING },
+              institution: { type: Type.STRING },
+              meta: { type: Type.STRING },
+            },
+            required: ['degree', 'institution', 'meta'],
+          },
+        },
+        skills: {
+          type: Type.ARRAY,
+          items: { type: Type.STRING },
+        },
+        achievements: {
+          type: Type.ARRAY,
+          items: { type: Type.STRING },
+        },
+        languages: { type: Type.STRING },
+      },
+      required: [
+        'fullName',
+        'targetRole',
+        'contactItems',
+        'professionalSummary',
+        'experience',
+        'education',
+        'skills',
+        'achievements',
+        'languages',
+      ],
+    },
+    coverLetter: {
+      type: Type.OBJECT,
+      properties: {
+        date: { type: Type.STRING },
+        recipientLines: {
+          type: Type.ARRAY,
+          items: { type: Type.STRING },
+        },
+        subject: { type: Type.STRING },
+        salutation: { type: Type.STRING },
+        paragraphs: {
+          type: Type.ARRAY,
+          items: { type: Type.STRING },
+        },
+        closing: { type: Type.STRING },
+        signatureName: { type: Type.STRING },
+      },
+      required: [
+        'date',
+        'recipientLines',
+        'subject',
+        'salutation',
+        'paragraphs',
+        'closing',
+        'signatureName',
+      ],
+    },
+  },
+  required: ['cv', 'coverLetter'],
+};
+
+async function generateDocuments(
   ai: GoogleGenAI,
   payload: CvFormData
-): Promise<GeneratedCvData> {
+): Promise<GeneratedDocumentsResponse> {
+  const today = formatTodayForKenya();
+
   const expText = payload.experiences.length
     ? payload.experiences
         .map(
@@ -79,7 +198,10 @@ async function generateCvContent(
     ? payload.achievements.map((a, i) => `${i + 1}. ${a}`).join('\n')
     : 'None provided.';
 
-  const prompt = `You are a senior professional CV writer specialising in the Kenyan and East African job market.
+  const prompt = `You are a senior CV writer and career coach specialising in the Kenyan and East African job market.
+Generate BOTH a complete ATS-optimised CV ("cv") AND a tailored cover letter ("coverLetter") in a single JSON response.
+
+DATE: ${today}
 
 CANDIDATE PROFILE:
 Name: ${payload.name}
@@ -88,6 +210,8 @@ Email: ${payload.email}
 Phone: ${payload.phone}
 Location: ${payload.location || 'Kenya'}
 ${payload.linkedin ? `LinkedIn / Portfolio: ${payload.linkedin}` : ''}
+${payload.targetCompany ? `Target Employer: ${payload.targetCompany}` : ''}
+${payload.jobDescription ? `TARGET JOB ADVERT / KEYWORDS:\n${payload.jobDescription}` : ''}
 
 WORK EXPERIENCE:
 ${expText}
@@ -105,188 +229,83 @@ ${achsText}
 
 ${payload.languages ? `LANGUAGES:\n${payload.languages}` : ''}
 
-INSTRUCTIONS:
-1. Write a sharp, ATS-optimised professional summary (maximum 3 concise sentences tailored to the target role).
-2. Refine every work experience entry with strong action verbs, achievement-focused bullet points, and realistic quantified impact where appropriate without fabricating employers or dates. If no work experience was provided, return an empty array for experience.
+CV RULES:
+1. Write a sharp, ATS-optimised professionalSummary (maximum 3 concise sentences tailored to the target role).
+2. Refine every work experience entry with strong action verbs and achievement-focused bullet points without fabricating employers or dates. If no work experience was provided, return an empty array for experience.
 3. Format education cleanly. If no education was provided, return an empty array for education.
-4. Preserve ALL skills provided by the candidate in the skills array (and optionally normalize casing).
-5. Polish any provided achievements into crisp, results-oriented statements; if none were provided, return an empty array.
-6. Include contact items (email, phone, location, and LinkedIn if provided) as clean strings in contactItems.
-7. Include languages string if provided, otherwise return an empty string.`;
+4. Preserve ALL skills provided by the candidate in cv.skills.
+5. Polish any provided achievements; if none were provided, return an empty array.
+6. Include email, phone, location, and LinkedIn (if provided) in contactItems.
+7. Include languages if provided, otherwise return an empty string.
 
-  const response = await ai.models.generateContent({
-    model: 'gemini-4-hydrogen',
-    contents: prompt,
-    config: {
-      systemInstruction:
-        'Return strictly valid JSON matching the requested schema. Do not invent employers, degrees, or contact information not implied by the candidate profile.',
-      thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
-      responseMimeType: 'application/json',
-      responseSchema: {
-        type: Type.OBJECT,
-        properties: {
-          fullName: { type: Type.STRING },
-          targetRole: { type: Type.STRING },
-          contactItems: {
-            type: Type.ARRAY,
-            items: { type: Type.STRING },
-          },
-          professionalSummary: { type: Type.STRING },
-          experience: {
-            type: Type.ARRAY,
-            items: {
-              type: Type.OBJECT,
-              properties: {
-                role: { type: Type.STRING },
-                company: { type: Type.STRING },
-                dateRange: { type: Type.STRING },
-                bullets: {
-                  type: Type.ARRAY,
-                  items: { type: Type.STRING },
-                },
-              },
-              required: ['role', 'company', 'dateRange', 'bullets'],
-            },
-          },
-          education: {
-            type: Type.ARRAY,
-            items: {
-              type: Type.OBJECT,
-              properties: {
-                degree: { type: Type.STRING },
-                institution: { type: Type.STRING },
-                meta: { type: Type.STRING },
-              },
-              required: ['degree', 'institution', 'meta'],
-            },
-          },
-          skills: {
-            type: Type.ARRAY,
-            items: { type: Type.STRING },
-          },
-          achievements: {
-            type: Type.ARRAY,
-            items: { type: Type.STRING },
-          },
-          languages: { type: Type.STRING },
-        },
-        required: [
-          'fullName',
-          'targetRole',
-          'contactItems',
-          'professionalSummary',
-          'experience',
-          'education',
-          'skills',
-          'achievements',
-          'languages',
-        ],
-      },
-    },
-  });
-
-  const text = (response.text ?? '').trim();
-  if (!text) {
-    throw new Error('CV generation returned an empty response.');
-  }
-  return JSON.parse(text) as GeneratedCvData;
-}
-
-async function generateCoverLetterContent(
-  ai: GoogleGenAI,
-  payload: CvFormData
-): Promise<GeneratedCoverLetterData> {
-  const today = formatTodayForKenya();
-  const expText = payload.experiences.length
-    ? payload.experiences
-        .map(
-          (e) =>
-            `${e.title} at ${e.company} (${e.start || ''}${
-              e.end ? ` – ${e.end}` : ''
-            }): ${e.bullets.join('; ')}`
-        )
-        .join('\n')
-    : 'Entry-level candidate / transferable skills';
-
-  const skillsText = payload.skills.length
-    ? payload.skills.join(', ')
-    : 'Communication, Teamwork, Problem Solving';
-
-  const prompt = `You are a senior career coach writing a tailored cover letter for the Kenyan job market.
-
-DATE: ${today}
-
-CANDIDATE:
-Name: ${payload.name}
-Target Role: ${payload.role}
-Email: ${payload.email}
-Phone: ${payload.phone}
-Location: ${payload.location || 'Kenya'}
-
-EXPERIENCE:
-${expText}
-
-SKILLS:
-${skillsText}
-
-${payload.summary ? `SUMMARY: ${payload.summary}` : ''}
-
-RULES:
+COVER LETTER RULES:
 - date: "${today}"
-- recipientLines: ["Hiring Manager", "Human Resources Department"]
+- recipientLines: ${
+    payload.targetCompany
+      ? `["Hiring Manager", "${payload.targetCompany}"]`
+      : `["Hiring Manager", "Human Resources Department"]`
+  }
 - subject: "Application for ${payload.role}"
 - salutation: "Dear Hiring Manager,"
-- paragraphs: Write 3 to 4 crisp, warm, confident, non-robotic paragraphs:
-  1) Opening expressing strong interest in the ${payload.role} role and core background.
-  2) Middle paragraph(s) highlighting 2–3 relevant strengths, achievements, or skills.
+- paragraphs: Write 3 to 4 warm, confident, non-robotic paragraphs:
+  1) Opening expressing strong interest in the ${payload.role} role${
+    payload.targetCompany ? ` at ${payload.targetCompany}` : ''
+  } and core background.
+  2) Middle paragraph(s) highlighting 2–3 relevant strengths, achievements, or skills aligned with the role.
   3) Closing paragraph with call to action and appreciation.
-- Do NOT use placeholder brackets like [Company Name]; write "your organisation" instead.
+- Do NOT use placeholder brackets like [Company Name]; write ${
+    payload.targetCompany
+      ? `"${payload.targetCompany}"`
+      : `"your organisation"`
+  }.
 - closing: "Yours sincerely,"
 - signatureName: "${payload.name}"`;
 
-  const response = await ai.models.generateContent({
-    model: 'gemini-4-hydrogen',
-    contents: prompt,
-    config: {
-      systemInstruction:
-        'Return strictly valid JSON matching the requested schema. No placeholder brackets.',
-      thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
-      responseMimeType: 'application/json',
-      responseSchema: {
-        type: Type.OBJECT,
-        properties: {
-          date: { type: Type.STRING },
-          recipientLines: {
-            type: Type.ARRAY,
-            items: { type: Type.STRING },
-          },
-          subject: { type: Type.STRING },
-          salutation: { type: Type.STRING },
-          paragraphs: {
-            type: Type.ARRAY,
-            items: { type: Type.STRING },
-          },
-          closing: { type: Type.STRING },
-          signatureName: { type: Type.STRING },
-        },
-        required: [
-          'date',
-          'recipientLines',
-          'subject',
-          'salutation',
-          'paragraphs',
-          'closing',
-          'signatureName',
-        ],
-      },
-    },
-  });
+  const attempts: Array<{ model: string; useThinking: boolean; delayMs: number }> = [
+    { model: 'gemini-4-hydrogen', useThinking: true, delayMs: 0 },
+    { model: 'gemini-4-hydrogen', useThinking: true, delayMs: 900 },
+    { model: 'gemini-3.1-flash-lite', useThinking: false, delayMs: 1200 },
+  ];
 
-  const text = (response.text ?? '').trim();
-  if (!text) {
-    throw new Error('Cover letter generation returned an empty response.');
+  let lastError: unknown;
+
+  for (const attempt of attempts) {
+    if (attempt.delayMs > 0) {
+      await sleep(attempt.delayMs);
+    }
+    try {
+      const response = await ai.models.generateContent({
+        model: attempt.model,
+        contents: prompt,
+        config: {
+          systemInstruction:
+            'Return strictly valid JSON matching the requested schema. Do not invent employers, degrees, or contact information not implied by the candidate profile.',
+          ...(attempt.useThinking
+            ? { thinkingConfig: { thinkingLevel: ThinkingLevel.LOW } }
+            : {}),
+          responseMimeType: 'application/json',
+          responseSchema: DOCUMENTS_RESPONSE_SCHEMA,
+        },
+      });
+
+      const text = (response.text ?? '').trim();
+      if (!text) {
+        throw new Error('Document generation returned an empty response.');
+      }
+      return JSON.parse(text) as GeneratedDocumentsResponse;
+    } catch (err) {
+      lastError = err;
+      if (!isTransientModelError(err)) {
+        throw err;
+      }
+      console.warn(
+        `Transient Gemini error on ${attempt.model}, retrying/falling back:`,
+        err instanceof Error ? err.message : String(err)
+      );
+    }
   }
-  return JSON.parse(text) as GeneratedCoverLetterData;
+
+  throw lastError;
 }
 
 function mapGeminiError(err: unknown): { status: number; message: string } {
@@ -294,29 +313,81 @@ function mapGeminiError(err: unknown): { status: number; message: string } {
   if (raw.includes('GEMINI_API_KEY')) {
     return { status: 500, message: raw };
   }
-  if (raw.includes('PERMISSION_DENIED') || raw.includes('API_KEY_INVALID') || raw.includes('403') || raw.includes('400')) {
+  if (
+    raw.includes('PERMISSION_DENIED') ||
+    raw.includes('API_KEY_INVALID') ||
+    raw.includes('403') ||
+    raw.includes('400')
+  ) {
     return {
       status: 400,
       message:
         'Please check your GEMINI_API_KEY in the Settings > Secrets panel.',
     };
   }
+  if (
+    raw.includes('503') ||
+    raw.includes('UNAVAILABLE') ||
+    raw.includes('high demand')
+  ) {
+    return {
+      status: 503,
+      message:
+        'The AI service is experiencing temporary high demand. Please click "Build My CV" again in a few seconds.',
+    };
+  }
   if (raw.includes('RESOURCE_EXHAUSTED') || raw.includes('429')) {
     return {
       status: 429,
       message:
-        'Rate limit reached. Please wait a moment and try again.',
+        'Rate limit reached. Please wait a few seconds and try again.',
     };
   }
   return {
     status: 500,
-    message: raw || 'Failed to generate documents.',
+    message: 'Failed to generate documents. Please try again shortly.',
   };
+}
+
+function resolveBaseUrl(req: Request): string {
+  const configured = (process.env.APP_URL || '').trim().replace(/\/+$/, '');
+  if (configured && configured !== 'MY_APP_URL') {
+    return configured;
+  }
+  const protoHeader = req.get('x-forwarded-proto');
+  const proto = protoHeader ? protoHeader.split(',')[0].trim() : req.protocol;
+  const host = req.get('x-forwarded-host') || req.get('host') || `localhost:${PORT}`;
+  return `${proto}://${host}`;
 }
 
 async function startServer() {
   const app = express();
   app.use(express.json({ limit: '1mb' }));
+
+  app.get('/robots.txt', (req: Request, res: Response) => {
+    const baseUrl = resolveBaseUrl(req);
+    res
+      .type('text/plain')
+      .send(
+        `User-agent: *\nAllow: /\nDisallow: /api/\n\nSitemap: ${baseUrl}/sitemap.xml\n`
+      );
+  });
+
+  app.get('/sitemap.xml', (req: Request, res: Response) => {
+    const baseUrl = resolveBaseUrl(req);
+    const todayIso = new Date().toISOString().split('T')[0];
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>${baseUrl}/</loc>
+    <lastmod>${todayIso}</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>1.0</priority>
+  </url>
+</urlset>
+`;
+    res.type('application/xml').send(xml);
+  });
 
   app.get('/api/health', (_req: Request, res: Response) => {
     res.json({ ok: true });
@@ -358,6 +429,8 @@ async function startServer() {
         phone,
         location: body?.location?.trim() || 'Kenya',
         linkedin: body?.linkedin?.trim() || '',
+        targetCompany: body?.targetCompany?.trim() || '',
+        jobDescription: body?.jobDescription?.trim() || '',
         summary: body?.summary?.trim() || '',
         languages: body?.languages?.trim() || '',
         experiences: Array.isArray(body?.experiences) ? body.experiences : [],
@@ -369,12 +442,9 @@ async function startServer() {
       };
 
       const ai = getAiClient();
-      const [cv, coverLetter] = await Promise.all([
-        generateCvContent(ai, payload),
-        generateCoverLetterContent(ai, payload),
-      ]);
+      const result = await generateDocuments(ai, payload);
 
-      res.json({ cv, coverLetter });
+      res.json(result);
     } catch (error) {
       const mapped = mapGeminiError(error);
       console.error('Document generation error:', error);

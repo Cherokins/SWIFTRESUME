@@ -1,3 +1,29 @@
+export type CvTheme = 'navy' | 'charcoal' | 'emerald';
+
+export const CV_THEMES: Record<
+  CvTheme,
+  { label: string; accent: string; badgeBg: string; badgeText: string }
+> = {
+  navy: {
+    label: 'Classic Navy',
+    accent: '#14397a',
+    badgeBg: '#e8edf7',
+    badgeText: '#14397a',
+  },
+  charcoal: {
+    label: 'Executive Charcoal',
+    accent: '#1f2937',
+    badgeBg: '#f1f3f5',
+    badgeText: '#1f2937',
+  },
+  emerald: {
+    label: 'Forest Emerald',
+    accent: '#14532d',
+    badgeBg: '#e7f5ec',
+    badgeText: '#14532d',
+  },
+};
+
 export interface ExperienceEntry {
   id: string;
   title: string;
@@ -22,6 +48,8 @@ export interface CvFormData {
   phone: string;
   location: string;
   linkedin: string;
+  targetCompany: string;
+  jobDescription: string;
   summary: string;
   languages: string;
   experiences: ExperienceEntry[];

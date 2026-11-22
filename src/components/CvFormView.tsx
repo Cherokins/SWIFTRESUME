@@ -7,6 +7,9 @@ import {
   Award,
   FileText,
   Plus,
+  RotateCcw,
+  Sparkles,
+  Target,
   X,
 } from 'lucide-react';
 import type {
@@ -21,6 +24,8 @@ interface CvFormViewProps {
   onChange: (next: CvFormData) => void;
   onBackHome: () => void;
   onSubmit: () => void;
+  onLoadSample: () => void;
+  onClearForm: () => void;
   onNotify: (msg: string) => void;
   isSubmitting: boolean;
 }
@@ -30,6 +35,8 @@ export const CvFormView: React.FC<CvFormViewProps> = ({
   onChange,
   onBackHome,
   onSubmit,
+  onLoadSample,
+  onClearForm,
   onNotify,
   isSubmitting,
 }) => {
@@ -224,12 +231,35 @@ export const CvFormView: React.FC<CvFormViewProps> = ({
         <span className="text-[#111318] font-medium">Build CV</span>
       </nav>
 
-      <h1 className="font-display text-3xl text-[#111318] mb-1">
-        Build Your CV
-      </h1>
-      <p className="text-sm text-[#72757f] mb-6">
-        Fill in your details and we will draft your CV and cover letter.
-      </p>
+      <div className="mb-6 flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
+        <div>
+          <h1 className="font-display text-3xl text-[#111318] mb-1">
+            Build Your CV
+          </h1>
+          <p className="text-sm text-[#72757f]">
+            Fill in your details and we will draft your CV and cover letter. Your
+            progress is saved automatically in this browser.
+          </p>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={onLoadSample}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-[#cccdd4] bg-white px-3 py-1.5 text-xs font-medium text-[#3a3d47] hover:border-[#14397a] hover:text-[#14397a] whitespace-nowrap cursor-pointer"
+          >
+            <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
+            Load sample
+          </button>
+          <button
+            type="button"
+            onClick={onClearForm}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-[#cccdd4] bg-white px-3 py-1.5 text-xs font-medium text-[#72757f] hover:border-[#b91c1c] hover:text-[#b91c1c] whitespace-nowrap cursor-pointer"
+          >
+            <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
+            Clear
+          </button>
+        </div>
+      </div>
 
       {/* Progress */}
       <div className="mb-6 flex items-center gap-1.5">
@@ -620,6 +650,47 @@ export const CvFormView: React.FC<CvFormViewProps> = ({
                 value={formData.languages}
                 onChange={(e) => updateField('languages', e.target.value)}
                 placeholder="e.g. English (Fluent), Swahili (Native), French (Conversational)"
+                className="w-full rounded-lg border border-[#cccdd4] bg-white px-3 py-2 text-sm text-[#111318] placeholder-[#b0b3bc] outline-none focus:border-[#14397a] focus:ring-2 focus:ring-[#14397a]/15"
+              />
+            </div>
+          </div>
+        </section>
+
+        {/* Job Tailoring (Optional) */}
+        <section className="overflow-hidden rounded-xl border border-[#e3e3e8] bg-white shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+          <div className="flex items-center justify-between border-b border-[#e3e3e8] px-5 py-3">
+            <div className="flex items-center gap-2 text-sm font-semibold text-[#111318]">
+              <span className="flex h-6 w-6 items-center justify-center rounded bg-[#e8edf7] text-[#14397a]">
+                <Target className="h-3.5 w-3.5" aria-hidden="true" />
+              </span>
+              Tailor to a Job Advert
+            </div>
+            <span className="text-xs text-[#72757f]">Optional</span>
+          </div>
+          <div className="space-y-3.5 p-5">
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="f-target-company" className="text-xs font-medium text-[#3a3d47]">
+                Target Company / Organisation
+              </label>
+              <input
+                id="f-target-company"
+                value={formData.targetCompany}
+                onChange={(e) => updateField('targetCompany', e.target.value)}
+                placeholder="e.g. KCB Bank Kenya, Safaricom PLC, Equity Group"
+                className="w-full rounded-lg border border-[#cccdd4] bg-white px-3 py-2 text-sm text-[#111318] placeholder-[#b0b3bc] outline-none focus:border-[#14397a] focus:ring-2 focus:ring-[#14397a]/15"
+              />
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="f-job-desc" className="text-xs font-medium text-[#3a3d47]">
+                Paste Key Job Requirements / Advert Snippet
+              </label>
+              <textarea
+                id="f-job-desc"
+                rows={3}
+                value={formData.jobDescription}
+                onChange={(e) => updateField('jobDescription', e.target.value)}
+                placeholder="Optional: paste the role requirements so your CV summary and cover letter match the employer's keywords..."
                 className="w-full rounded-lg border border-[#cccdd4] bg-white px-3 py-2 text-sm text-[#111318] placeholder-[#b0b3bc] outline-none focus:border-[#14397a] focus:ring-2 focus:ring-[#14397a]/15"
               />
             </div>

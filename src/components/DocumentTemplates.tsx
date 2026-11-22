@@ -1,23 +1,36 @@
 import React from 'react';
-import type {
-  GeneratedCoverLetterData,
-  GeneratedCvData,
+import {
+  CV_THEMES,
+  type CvTheme,
+  type GeneratedCoverLetterData,
+  type GeneratedCvData,
 } from '../types/cv';
 
-export const CvDocumentView: React.FC<{ cv: GeneratedCvData }> = ({ cv }) => {
+export const CvDocumentView: React.FC<{
+  cv: GeneratedCvData;
+  theme?: CvTheme;
+}> = ({ cv, theme = 'navy' }) => {
+  const palette = CV_THEMES[theme] || CV_THEMES.navy;
+
   return (
     <div style={{ fontFamily: 'Georgia, "Times New Roman", serif' }}>
       <h2 className="text-2xl font-bold tracking-tight text-[#111318] mb-0.5">
         {cv.fullName}
       </h2>
       <div className="text-[13px] text-[#3a3d47] mb-2">{cv.targetRole}</div>
-      <div className="flex flex-wrap gap-x-3 gap-y-1 border-b-2 border-[#14397a] pb-3 mb-4 text-[11px] text-[#72757f]">
+      <div
+        className="flex flex-wrap gap-x-3 gap-y-1 border-b-2 pb-3 mb-4 text-[11px] text-[#72757f]"
+        style={{ borderBottomColor: palette.accent }}
+      >
         {cv.contactItems.filter(Boolean).map((item, idx) => (
           <span key={idx}>{item}</span>
         ))}
       </div>
 
-      <h3 className="mt-4 mb-2 border-b border-[#e3e3e8] pb-1 text-[9px] font-bold uppercase tracking-[0.16em] text-[#14397a]">
+      <h3
+        className="mt-4 mb-2 border-b border-[#e3e3e8] pb-1 text-[9px] font-bold uppercase tracking-[0.16em]"
+        style={{ color: palette.accent }}
+      >
         Professional Summary
       </h3>
       <p className="text-xs leading-relaxed text-[#3a3d47]">
@@ -26,7 +39,10 @@ export const CvDocumentView: React.FC<{ cv: GeneratedCvData }> = ({ cv }) => {
 
       {cv.experience.length > 0 && (
         <>
-          <h3 className="mt-5 mb-2.5 border-b border-[#e3e3e8] pb-1 text-[9px] font-bold uppercase tracking-[0.16em] text-[#14397a]">
+          <h3
+            className="mt-5 mb-2.5 border-b border-[#e3e3e8] pb-1 text-[9px] font-bold uppercase tracking-[0.16em]"
+            style={{ color: palette.accent }}
+          >
             Work Experience
           </h3>
           <div className="space-y-3">
@@ -58,7 +74,10 @@ export const CvDocumentView: React.FC<{ cv: GeneratedCvData }> = ({ cv }) => {
 
       {cv.education.length > 0 && (
         <>
-          <h3 className="mt-5 mb-2 border-b border-[#e3e3e8] pb-1 text-[9px] font-bold uppercase tracking-[0.16em] text-[#14397a]">
+          <h3
+            className="mt-5 mb-2 border-b border-[#e3e3e8] pb-1 text-[9px] font-bold uppercase tracking-[0.16em]"
+            style={{ color: palette.accent }}
+          >
             Education
           </h3>
           <div className="space-y-2.5">
@@ -81,14 +100,21 @@ export const CvDocumentView: React.FC<{ cv: GeneratedCvData }> = ({ cv }) => {
 
       {cv.skills.length > 0 && (
         <>
-          <h3 className="mt-5 mb-2 border-b border-[#e3e3e8] pb-1 text-[9px] font-bold uppercase tracking-[0.16em] text-[#14397a]">
+          <h3
+            className="mt-5 mb-2 border-b border-[#e3e3e8] pb-1 text-[9px] font-bold uppercase tracking-[0.16em]"
+            style={{ color: palette.accent }}
+          >
             Skills
           </h3>
           <div className="flex flex-wrap gap-1.5">
             {cv.skills.map((skill, idx) => (
               <span
                 key={idx}
-                className="rounded bg-[#e8edf7] px-2 py-0.5 text-[10px] font-semibold text-[#14397a]"
+                className="rounded px-2 py-0.5 text-[10px] font-semibold"
+                style={{
+                  backgroundColor: palette.badgeBg,
+                  color: palette.badgeText,
+                }}
               >
                 {skill}
               </span>
@@ -99,13 +125,19 @@ export const CvDocumentView: React.FC<{ cv: GeneratedCvData }> = ({ cv }) => {
 
       {cv.achievements.length > 0 && (
         <>
-          <h3 className="mt-5 mb-2 border-b border-[#e3e3e8] pb-1 text-[9px] font-bold uppercase tracking-[0.16em] text-[#14397a]">
+          <h3
+            className="mt-5 mb-2 border-b border-[#e3e3e8] pb-1 text-[9px] font-bold uppercase tracking-[0.16em]"
+            style={{ color: palette.accent }}
+          >
             Achievements &amp; Awards
           </h3>
           <ol className="space-y-1 text-[11px] leading-relaxed text-[#3a3d47]">
             {cv.achievements.map((ach, idx) => (
               <li key={idx} className="flex gap-2">
-                <span className="font-bold text-[#14397a] tabular-nums">
+                <span
+                  className="font-bold tabular-nums"
+                  style={{ color: palette.accent }}
+                >
                   {idx + 1}.
                 </span>
                 <span>{ach}</span>
@@ -117,7 +149,10 @@ export const CvDocumentView: React.FC<{ cv: GeneratedCvData }> = ({ cv }) => {
 
       {cv.languages.trim() && (
         <>
-          <h3 className="mt-5 mb-2 border-b border-[#e3e3e8] pb-1 text-[9px] font-bold uppercase tracking-[0.16em] text-[#14397a]">
+          <h3
+            className="mt-5 mb-2 border-b border-[#e3e3e8] pb-1 text-[9px] font-bold uppercase tracking-[0.16em]"
+            style={{ color: palette.accent }}
+          >
             Languages
           </h3>
           <p className="text-[11px] leading-relaxed text-[#3a3d47]">

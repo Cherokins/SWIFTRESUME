@@ -14,13 +14,17 @@ import { SuccessView } from './components/SuccessView';
 import type {
   AppConfigResponse,
   CvFormData,
+  CvTheme,
   GeneratedDocumentsResponse,
 } from './types/cv';
 import {
   buildCoverLetterPrintHtml,
   buildCvPrintHtml,
+  formatCoverLetterPlainText,
   printHtmlDocument,
 } from './utils/printDocument';
+
+const DRAFT_STORAGE_KEY = 'swiftcv_draft_v1';
 
 const INITIAL_FORM_DATA: CvFormData = {
   name: '',
@@ -29,12 +33,74 @@ const INITIAL_FORM_DATA: CvFormData = {
   phone: '',
   location: '',
   linkedin: '',
+  targetCompany: '',
+  jobDescription: '',
   summary: '',
   languages: '',
   experiences: [],
   education: [],
   skills: [],
   achievements: [''],
+};
+
+const SAMPLE_FORM_DATA: CvFormData = {
+  name: 'Faith Wanjiku Mwangi',
+  role: 'Relationship Manager — SME Banking',
+  email: 'faith.mwangi@example.co.ke',
+  phone: '+254 712 345 678',
+  location: 'Nairobi, Kenya',
+  linkedin: 'linkedin.com/in/faith-mwangi-ke',
+  targetCompany: 'KCB Bank Kenya',
+  jobDescription:
+    'Seeking an SME Relationship Manager with strong credit appraisal, portfolio growth, and client retention experience across East Africa.',
+  summary:
+    'Results-driven corporate and SME banking specialist with 5+ years growing commercial loan portfolios, onboarding high-value business accounts, and maintaining strong credit quality across Nairobi.',
+  languages: 'English (Fluent), Swahili (Native)',
+  experiences: [
+    {
+      id: 'sample_exp_1',
+      title: 'Business Development Officer',
+      company: 'Co-operative Bank of Kenya',
+      start: 'Mar 2022',
+      end: 'Present',
+      bullets: [
+        'Grew SME asset and deposit portfolio by KES 180M within 18 months across Westlands and CBD branches.',
+        'Assessed credit applications and financial statements, maintaining a 97.5% performing loan book.',
+      ],
+    },
+    {
+      id: 'sample_exp_2',
+      title: 'Credit Analyst',
+      company: 'NCBA Bank Kenya',
+      start: 'Jan 2020',
+      end: 'Feb 2022',
+      bullets: [
+        'Evaluated cash-flow forecasts and collateral documentation for 120+ SME credit facilities.',
+        'Reduced turnaround time for credit appraisal memos by 25% through standardised financial templates.',
+      ],
+    },
+  ],
+  education: [
+    {
+      id: 'sample_edu_1',
+      degree: 'Bachelor of Commerce (Finance Option)',
+      school: 'University of Nairobi',
+      year: 'Nov 2019',
+      grade: 'Second Class Honours (Upper Division)',
+    },
+  ],
+  skills: [
+    'Credit Risk Analysis',
+    'SME Portfolio Management',
+    'Financial Modelling',
+    'Client Acquisition',
+    'Microsoft Excel',
+    'KYC & CBK Compliance',
+  ],
+  achievements: [
+    'Top SME Relationship Officer, Nairobi Region (Q4 2024)',
+    'Certified Credit Professional (CCP — KASNEB)',
+  ],
 };
 
 const DEFAULT_CONFIG: AppConfigResponse = {
@@ -44,11 +110,33 @@ const DEFAULT_CONFIG: AppConfigResponse = {
   hasPaystackSecret: false,
 };
 
+function loadInitialDraft(): CvFormData {
+  try {
+    const raw = window.localStorage.getItem(DRAFT_STORAGE_KEY);
+    if (!raw) return INITIAL_FORM_DATA;
+    const parsed = JSON.parse(raw) as Partial<CvFormData>;
+    return {
+      ...INITIAL_FORM_DATA,
+      ...parsed,
+      experiences: Array.isArray(parsed.experiences) ? parsed.experiences : [],
+      education: Array.isArray(parsed.education) ? parsed.education : [],
+      skills: Array.isArray(parsed.skills) ? parsed.skills : [],
+      achievements:
+        Array.isArray(parsed.achievements) && parsed.achievements.length > 0
+          ? parsed.achievements
+          : [''],
+    };
+  } catch {
+    return INITIAL_FORM_DATA;
+  }
+}
+
 export default function App() {
   const [screen, setScreen] = useState<ScreenId>('landing');
-  const [formData, setFormData] = useState<CvFormData>(INITIAL_FORM_DATA);
+  const [formData, setFormData] = useState<CvFormData>(loadInitialDraft);
   const [documents, setDocuments] =
     useState<GeneratedDocumentsResponse | null>(null);
+  const [cvTheme, setCvTheme] = useState<CvTheme>('navy');
   const [isUnlocked, setIsUnlocked] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [config, setConfig] = useState<AppConfigResponse>(DEFAULT_CONFIG);
@@ -59,6 +147,38 @@ export default function App() {
 
   const showToast = useCallback((msg: string) => {
     setToast(msg);
+  }, []);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(formData));
+    } catch {
+      // Ignore storage quota errors
+    }
+  }, [formData]);
+
+  // Dynamic canonical URL and og:url for SEO
+  useEffect(() => {
+    const currentUrl = window.location.origin + window.location.pathname;
+    let canonical = document.querySelector<HTMLLinkElement>(
+      'link[rel="canonical"]'
+    );
+    if (!canonical) {
+      canonical = document.createElement('link');
+      canonical.rel = 'canonical';
+      document.head.appendChild(canonical);
+    }
+    canonical.href = currentUrl;
+
+    let ogUrl = document.querySelector<HTMLMetaElement>(
+      'meta[property="og:url"]'
+    );
+    if (!ogUrl) {
+      ogUrl = document.createElement('meta');
+      ogUrl.setAttribute('property', 'og:url');
+      document.head.appendChild(ogUrl);
+    }
+    ogUrl.content = currentUrl;
   }, []);
 
   useEffect(() => {
@@ -140,13 +260,44 @@ export default function App() {
     if (!documents) return;
     const html =
       type === 'cv'
-        ? buildCvPrintHtml(documents.cv)
+        ? buildCvPrintHtml(documents.cv, cvTheme)
         : buildCoverLetterPrintHtml(documents.coverLetter);
     printHtmlDocument(html);
   };
 
+  const handleCopyCoverLetter = async () => {
+    if (!documents) return;
+    try {
+      const plain = formatCoverLetterPlainText(documents.coverLetter);
+      await navigator.clipboard.writeText(plain);
+      showToast('Cover letter copied to clipboard.');
+    } catch {
+      showToast('Unable to copy automatically. Use Download Cover Letter.');
+    }
+  };
+
+  const handleLoadSample = () => {
+    setFormData(SAMPLE_FORM_DATA);
+    showToast('Sample Kenyan CV profile loaded.');
+  };
+
+  const handleClearForm = () => {
+    setFormData(INITIAL_FORM_DATA);
+    try {
+      window.localStorage.removeItem(DRAFT_STORAGE_KEY);
+    } catch {
+      // Ignore
+    }
+    showToast('Form cleared.');
+  };
+
   const handleBuildAnother = () => {
     setFormData(INITIAL_FORM_DATA);
+    try {
+      window.localStorage.removeItem(DRAFT_STORAGE_KEY);
+    } catch {
+      // Ignore
+    }
     setDocuments(null);
     setIsUnlocked(false);
     navigate('form');
@@ -174,6 +325,8 @@ export default function App() {
             onChange={setFormData}
             onBackHome={() => navigate('landing')}
             onSubmit={handleGenerate}
+            onLoadSample={handleLoadSample}
+            onClearForm={handleClearForm}
             onNotify={showToast}
             isSubmitting={isSubmitting}
           />
@@ -187,12 +340,15 @@ export default function App() {
             userEmail={formData.email}
             config={config}
             isUnlocked={isUnlocked}
+            theme={cvTheme}
+            onThemeChange={setCvTheme}
             onEditDetails={() => navigate('form')}
             onPaymentVerified={() => {
               setIsUnlocked(true);
               navigate('success');
             }}
             onDownload={handleDownload}
+            onCopyCoverLetter={handleCopyCoverLetter}
             onNotify={showToast}
           />
         )}
@@ -200,6 +356,7 @@ export default function App() {
         {screen === 'success' && documents && (
           <SuccessView
             onDownload={handleDownload}
+            onCopyCoverLetter={handleCopyCoverLetter}
             onViewDocuments={() => navigate('preview')}
             onBuildAnother={handleBuildAnother}
           />
@@ -234,8 +391,9 @@ export default function App() {
               {legalModal === 'privacy' ? (
                 <>
                   <p>
-                    SwiftCV processes your career details solely to draft your
-                    CV and cover letter for your active session.
+                    SwiftCV stores your form draft locally in your browser so you
+                    do not lose your work, and processes your details solely to
+                    draft your CV and cover letter.
                   </p>
                   <p>
                     Payments are processed directly by Paystack over encrypted
@@ -246,7 +404,7 @@ export default function App() {
               ) : (
                 <>
                   <p>
-                    Each KES 20 unlock covers one generated CV and matching
+                    Each KES 50 unlock covers one generated CV and matching
                     cover letter package. You are responsible for verifying the
                     accuracy of all dates, qualifications, and employment
                     details before submitting job applications.

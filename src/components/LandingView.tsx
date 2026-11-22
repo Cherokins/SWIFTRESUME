@@ -1,5 +1,5 @@
-import React from 'react';
-import { ArrowRight } from 'lucide-react';
+import React, { useState } from 'react';
+import { ArrowRight, ChevronDown } from 'lucide-react';
 
 interface LandingViewProps {
   onStartBuilding: () => void;
@@ -39,10 +39,30 @@ const CAPABILITIES = [
   },
 ];
 
+const FAQS = [
+  {
+    q: 'Can I preview my CV and cover letter before paying?',
+    a: 'Yes. Fill in your details, generate both documents, inspect them with the preview zoom controls, and switch accent styles for free. You only pay KES 50 when you are ready to unlock and download.',
+  },
+  {
+    q: 'Which payment methods are supported?',
+    a: 'Checkout is powered by Paystack, supporting M-Pesa STK push as well as Visa and Mastercard debit or credit cards.',
+  },
+  {
+    q: 'Will my CV pass Applicant Tracking Systems (ATS)?',
+    a: 'Yes. SwiftCV formats your CV as a clean, single-column Georgia serif document without tables or decorative graphics that cause ATS scanners to misread dates and skills.',
+  },
+  {
+    q: 'Can I tailor my CV to a specific job advert?',
+    a: 'Yes. You can optionally enter the target employer name and paste key job requirements in the builder form so your professional summary and cover letter highlight the most relevant strengths.',
+  },
+];
+
 export const LandingView: React.FC<LandingViewProps> = ({
   onStartBuilding,
   onOpenLegal,
 }) => {
+  const [openFaq, setOpenFaq] = useState<number | null>(0);
   const scrollToFeatures = () => {
     document
       .getElementById('how-it-works')
@@ -217,6 +237,47 @@ export const LandingView: React.FC<LandingViewProps> = ({
               </p>
             </div>
           ))}
+        </div>
+      </section>
+
+      {/* FAQ Section */}
+      <section className="mx-auto max-w-[1160px] px-5 pb-14 sm:px-7">
+        <div className="mb-7 max-w-xl">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-[#72757f]">
+            Common Questions
+          </p>
+          <h2 className="font-display text-3xl leading-tight text-[#111318] text-balance">
+            Everything you need to know before applying
+          </h2>
+        </div>
+
+        <div className="divide-y divide-[#e3e3e8] overflow-hidden rounded-xl border border-[#e3e3e8] bg-white">
+          {FAQS.map((item, idx) => {
+            const isOpen = openFaq === idx;
+            return (
+              <div key={item.q}>
+                <button
+                  type="button"
+                  aria-expanded={isOpen}
+                  onClick={() => setOpenFaq(isOpen ? null : idx)}
+                  className="flex w-full items-center justify-between gap-4 px-6 py-4 text-left text-sm font-semibold text-[#111318] hover:bg-[#fafafb] transition-colors cursor-pointer"
+                >
+                  <span>{item.q}</span>
+                  <ChevronDown
+                    className={`h-4 w-4 shrink-0 text-[#72757f] transition-transform duration-200 ${
+                      isOpen ? 'rotate-180' : ''
+                    }`}
+                    aria-hidden="true"
+                  />
+                </button>
+                {isOpen && (
+                  <div className="px-6 pb-4 text-xs leading-relaxed text-[#3a3d47]">
+                    {item.a}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       </section>
 

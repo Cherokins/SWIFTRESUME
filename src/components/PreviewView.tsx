@@ -1,43 +1,28 @@
 import React, { useState } from 'react';
-import { RotateCcw, ZoomIn, ZoomOut } from 'lucide-react';
-import type {
-  AppConfigResponse,
-  GeneratedDocumentsResponse,
+import PaystackPop from '@paystack/inline-js';
+import { Copy, RotateCcw, ZoomIn, ZoomOut } from 'lucide-react';
+import {
+  CV_THEMES,
+  type AppConfigResponse,
+  type CvTheme,
+  type GeneratedDocumentsResponse,
 } from '../types/cv';
 import {
   CoverLetterDocumentView,
   CvDocumentView,
 } from './DocumentTemplates';
 
-interface PaystackPopInstance {
-  openIframe: () => void;
-}
-
-declare global {
-  interface Window {
-    PaystackPop?: {
-      setup: (options: {
-        key: string;
-        email: string;
-        amount: number;
-        currency: string;
-        ref: string;
-        metadata?: Record<string, unknown>;
-        callback: (response: { reference: string }) => void;
-        onClose: () => void;
-      }) => PaystackPopInstance;
-    };
-  }
-}
-
 interface PreviewViewProps {
   documents: GeneratedDocumentsResponse;
   userEmail: string;
   config: AppConfigResponse;
   isUnlocked: boolean;
+  theme: CvTheme;
+  onThemeChange: (theme: CvTheme) => void;
   onEditDetails: () => void;
   onPaymentVerified: () => void;
   onDownload: (type: 'cv' | 'cl') => void;
+  onCopyCoverLetter: () => void;
   onNotify: (msg: string) => void;
 }
 
@@ -50,9 +35,12 @@ export const PreviewView: React.FC<PreviewViewProps> = ({
   userEmail,
   config,
   isUnlocked,
+  theme,
+  onThemeChange,
   onEditDetails,
   onPaymentVerified,
   onDownload,
+  onCopyCoverLetter,
   onNotify,
 }) => {
   const [activeTab, setActiveTab] = useState<'cv' | 'cl'>('cv');
@@ -77,64 +65,69 @@ export const PreviewView: React.FC<PreviewViewProps> = ({
       return;
     }
 
-    if (!window.PaystackPop) {
-      onNotify(
-        'Paystack checkout script is still loading. Please try again in a moment.'
-      );
-      return;
-    }
-
-    const handler = window.PaystackPop.setup({
-      key: config.paystackPublicKey,
-      email: userEmail || 'guest@swiftcv.app',
-      amount: config.amountKobo,
-      currency: config.currency,
-      ref: `SCV_${Date.now()}`,
-      metadata: {
-        custom_fields: [
-          {
-            display_name: 'Product',
-            variable_name: 'product',
-            value: 'SwiftCV CV + Cover Letter',
-          },
-        ],
-      },
-      callback: async (response: { reference: string }) => {
-        setIsVerifying(true);
-        try {
-          const res = await fetch('/api/paystack/verify', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ reference: response.reference }),
-          });
-          const data = (await res.json()) as {
-            verified?: boolean;
-            error?: string;
-          };
-          if (!res.ok || !data.verified) {
-            onNotify(
-              data.error ||
-                'Payment verification failed. Please contact support with your reference.'
-            );
-            return;
+    try {
+      const paystack = new PaystackPop();
+      paystack.newTransaction({
+        key: config.paystackPublicKey,
+        email: userEmail || 'guest@swiftcv.app',
+        amount: config.amountKobo,
+        currency: config.currency,
+        reference: `SCV_${Date.now()}`,
+        metadata: {
+          custom_fields: [
+            {
+              display_name: 'Product',
+              variable_name: 'product',
+              value: 'SwiftCV CV + Cover Letter',
+            },
+          ],
+        },
+        onSuccess: async (transaction) => {
+          setIsVerifying(true);
+          try {
+            const res = await fetch('/api/paystack/verify', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ reference: transaction.reference }),
+            });
+            const data = (await res.json()) as {
+              verified?: boolean;
+              error?: string;
+            };
+            if (!res.ok || !data.verified) {
+              onNotify(
+                data.error ||
+                  'Payment verification failed. Please contact support with your reference.'
+              );
+              return;
+            }
+            onPaymentVerified();
+          } catch {
+            onNotify('Network error while verifying payment. Please try again.');
+          } finally {
+            setIsVerifying(false);
           }
-          onPaymentVerified();
-        } catch {
-          onNotify('Network error while verifying payment. Please try again.');
-        } finally {
-          setIsVerifying(false);
-        }
-      },
-      onClose: () => {
-        onNotify('Payment cancelled — your documents are still waiting.');
-      },
-    });
-
-    handler.openIframe();
+        },
+        onCancel: () => {
+          onNotify('Payment cancelled — your documents are still waiting.');
+        },
+        onError: (err) => {
+          onNotify(
+            err?.message || 'Unable to launch Paystack checkout. Please try again.'
+          );
+        },
+      });
+    } catch (err) {
+      onNotify(
+        err instanceof Error
+          ? err.message
+          : 'Unable to open Paystack checkout. Please try again.'
+      );
+    }
   };
 
   return (
-    <div className="mx-auto max-w-[880px] px-5 pt-7 pb-20 sm:px-7">
+    <div className="mx-auto max-w-[920px] px-5 pt-7 pb-20 sm:px-7">
       <div className="mb-4 flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
         <div>
           <h1 className="font-display text-2xl text-[#111318]">
@@ -155,13 +148,25 @@ export const PreviewView: React.FC<PreviewViewProps> = ({
             Edit details
           </button>
           {isUnlocked ? (
-            <button
-              type="button"
-              onClick={() => onDownload(activeTab)}
-              className="rounded-lg bg-[#14397a] px-4 py-2 text-xs font-semibold text-white hover:bg-[#1d52b0] whitespace-nowrap cursor-pointer"
-            >
-              {activeTab === 'cv' ? 'Download CV' : 'Download Cover Letter'}
-            </button>
+            <>
+              {activeTab === 'cl' && (
+                <button
+                  type="button"
+                  onClick={onCopyCoverLetter}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-[#cccdd4] bg-white px-3.5 py-2 text-xs font-medium text-[#3a3d47] hover:border-[#72757f] hover:text-[#111318] whitespace-nowrap cursor-pointer"
+                >
+                  <Copy className="h-3.5 w-3.5" aria-hidden="true" />
+                  Copy text
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => onDownload(activeTab)}
+                className="rounded-lg bg-[#14397a] px-4 py-2 text-xs font-semibold text-white hover:bg-[#1d52b0] whitespace-nowrap cursor-pointer"
+              >
+                {activeTab === 'cv' ? 'Download CV' : 'Download Cover Letter'}
+              </button>
+            </>
           ) : (
             <button
               type="button"
@@ -177,8 +182,8 @@ export const PreviewView: React.FC<PreviewViewProps> = ({
         </div>
       </div>
 
-      {/* Segmented Tabs + Zoom Control Bar */}
-      <div className="mb-4 flex flex-col gap-3 border-b border-[#e3e3e8] pb-2 sm:flex-row sm:items-center sm:justify-between sm:pb-0">
+      {/* Segmented Tabs + CV Style + Zoom Control Bar */}
+      <div className="mb-4 flex flex-col gap-3 border-b border-[#e3e3e8] pb-2.5 lg:flex-row lg:items-center lg:justify-between lg:pb-0">
         <div className="flex">
           <button
             type="button"
@@ -204,57 +209,86 @@ export const PreviewView: React.FC<PreviewViewProps> = ({
           </button>
         </div>
 
-        {/* Document Zoom Control Slider */}
-        <div
-          aria-label="Document zoom controls"
-          className="flex items-center gap-2 self-start rounded-lg border border-[#e3e3e8] bg-white px-2.5 py-1.5 sm:mb-1.5 sm:self-auto"
-        >
-          <button
-            type="button"
-            onClick={() => adjustZoom(-ZOOM_STEP)}
-            disabled={zoom <= MIN_ZOOM}
-            aria-label="Zoom out"
-            className="rounded p-1 text-[#3a3d47] transition-colors hover:bg-[#f6f6f7] hover:text-[#111318] disabled:opacity-35 cursor-pointer"
+        <div className="flex flex-wrap items-center gap-2 lg:mb-1.5">
+          {/* CV Accent Style Selector */}
+          {activeTab === 'cv' && (
+            <div
+              role="group"
+              aria-label="CV accent theme"
+              className="flex items-center gap-1 rounded-lg border border-[#e3e3e8] bg-[#f6f6f7] p-1"
+            >
+              {(Object.keys(CV_THEMES) as CvTheme[]).map((key) => {
+                const active = theme === key;
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => onThemeChange(key)}
+                    className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors whitespace-nowrap cursor-pointer ${
+                      active
+                        ? 'bg-white text-[#111318] shadow-xs'
+                        : 'text-[#72757f] hover:text-[#111318]'
+                    }`}
+                  >
+                    {CV_THEMES[key].label}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Document Zoom Control Slider */}
+          <div
+            aria-label="Document zoom controls"
+            className="flex items-center gap-2 rounded-lg border border-[#e3e3e8] bg-white px-2.5 py-1.5"
           >
-            <ZoomOut className="h-3.5 w-3.5" aria-hidden="true" />
-          </button>
-
-          <input
-            type="range"
-            min={MIN_ZOOM}
-            max={MAX_ZOOM}
-            step={ZOOM_STEP}
-            value={zoom}
-            onChange={(e) => setZoom(Number(e.target.value))}
-            aria-label="Zoom percentage"
-            className="h-1.5 w-24 sm:w-28 cursor-pointer accent-[#14397a]"
-          />
-
-          <button
-            type="button"
-            onClick={() => adjustZoom(ZOOM_STEP)}
-            disabled={zoom >= MAX_ZOOM}
-            aria-label="Zoom in"
-            className="rounded p-1 text-[#3a3d47] transition-colors hover:bg-[#f6f6f7] hover:text-[#111318] disabled:opacity-35 cursor-pointer"
-          >
-            <ZoomIn className="h-3.5 w-3.5" aria-hidden="true" />
-          </button>
-
-          <span className="w-10 text-right font-mono text-xs font-medium text-[#111318] tabular-nums">
-            {zoom}%
-          </span>
-
-          {zoom !== 100 && (
             <button
               type="button"
-              onClick={() => setZoom(100)}
-              aria-label="Reset zoom to 100%"
-              title="Reset zoom"
-              className="ml-0.5 rounded p-1 text-[#72757f] transition-colors hover:bg-[#f6f6f7] hover:text-[#14397a] cursor-pointer"
+              onClick={() => adjustZoom(-ZOOM_STEP)}
+              disabled={zoom <= MIN_ZOOM}
+              aria-label="Zoom out"
+              className="rounded p-1 text-[#3a3d47] transition-colors hover:bg-[#f6f6f7] hover:text-[#111318] disabled:opacity-35 cursor-pointer"
             >
-              <RotateCcw className="h-3 w-3" aria-hidden="true" />
+              <ZoomOut className="h-3.5 w-3.5" aria-hidden="true" />
             </button>
-          )}
+
+            <input
+              type="range"
+              min={MIN_ZOOM}
+              max={MAX_ZOOM}
+              step={ZOOM_STEP}
+              value={zoom}
+              onChange={(e) => setZoom(Number(e.target.value))}
+              aria-label="Zoom percentage"
+              className="h-1.5 w-24 sm:w-28 cursor-pointer accent-[#14397a]"
+            />
+
+            <button
+              type="button"
+              onClick={() => adjustZoom(ZOOM_STEP)}
+              disabled={zoom >= MAX_ZOOM}
+              aria-label="Zoom in"
+              className="rounded p-1 text-[#3a3d47] transition-colors hover:bg-[#f6f6f7] hover:text-[#111318] disabled:opacity-35 cursor-pointer"
+            >
+              <ZoomIn className="h-3.5 w-3.5" aria-hidden="true" />
+            </button>
+
+            <span className="w-10 text-right font-mono text-xs font-medium text-[#111318] tabular-nums">
+              {zoom}%
+            </span>
+
+            {zoom !== 100 && (
+              <button
+                type="button"
+                onClick={() => setZoom(100)}
+                aria-label="Reset zoom to 100%"
+                title="Reset zoom"
+                className="ml-0.5 rounded p-1 text-[#72757f] transition-colors hover:bg-[#f6f6f7] hover:text-[#14397a] cursor-pointer"
+              >
+                <RotateCcw className="h-3 w-3" aria-hidden="true" />
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -272,7 +306,7 @@ export const PreviewView: React.FC<PreviewViewProps> = ({
             className="px-6 py-8 sm:px-12 sm:py-11"
           >
             {activeTab === 'cv' ? (
-              <CvDocumentView cv={documents.cv} />
+              <CvDocumentView cv={documents.cv} theme={theme} />
             ) : (
               <CoverLetterDocumentView coverLetter={documents.coverLetter} />
             )}
